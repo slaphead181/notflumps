@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+li.highlight{border: 2px solid red;}
+</style>
+</head>
+<body>
+<h1>Game</h1>
+<p>Player selection</p>
+<input id="playerListBox" list="playerList">
+<datalist id="playerList">
+	<option value="1">
+	<option value="2">
+</datalist>
+<div>
+	<div style="float:left; border:1px solid black;">
+		<h4>Your Card</h4>
+		<div id="ownDisplayArea"></div>
+		<p><input type="button" id="next" value="Next Card"></p>
+		<p><input type="button" id="show" value="Show This Card To Other Players"></p>
+	</div>
+	<div style="float:right; border:1px solid black;">
+		<div id="opponentDisplayArea"></div>
+	</div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/2.0.3/socket.io.js"></script> <!-- include socket.io client side script -->
+<script>
+function display (displayDiv, card) {
+	displayDiv.innerHTML = "";
+	displayDiv.setAttribute("cardname", card.name);
+	displayDiv.setAttribute("cardplayer", card.player);
+	if (displayDiv.id != "ownDisplayArea"){	// Only add heading if this is not the player's card
+		const heading = document.createElement("h4");
+		heading.textContent = card.player + "'s card";
+		displayDiv.appendChild(heading);
+	}
+	const list = document.createElement("ul");
+	list.id = card.name;
+	displayDiv.appendChild(list);
+	for(var stat in card){
+		if (stat != "player" && stat != "sortRnd"){	// These fields are handled differently
+			const item = document.createElement("li");
+			item.setAttribute("name", "stat:" + stat);
+			const text = document.createTextNode(stat + ': ' + card[stat]);
+			item.appendChild(text);
+			if (displayDiv.id == "ownDisplayArea"){	// Only add declare buttons if this is the player's card
+				const declareButton = document.createElement("input");
+				declareButton.setAttribute("type", "button");
+				declareButton.setAttribute("value", "Declare");
+				declareButton.setAttribute("statName", stat);
+				declareButton.addEventListener("click", function() { //add event listener for "Declare" button
+					// Show first
+					var ownCardDisplayDiv = document.getElementById("ownDisplayArea");
+					var cardID = ownCardDisplayDiv.getAttribute("cardname");
+					socket.emit("show", cardID); // Send event to server with card ID
+					// Then declare
+					var declaredStat = this.getAttribute("statname");
+					socket.emit("declare", declaredStat); // Send event to server with card ID
+					this.parentElement.setAttribute("class", "highlight");	// Highlight own stat
+				});
+				item.appendChild(declareButton);
+			}
+			list.appendChild(item);
+		}
+	}
+	if (displayDiv.id != "ownDisplayArea"){	// Only add pass button if this is not the player's card
+		const passButton = document.createElement("input");
+		passButton.setAttribute("type", "button");
+		passButton.setAttribute("value", "Pass Your Card To " + card.player);	
+		passButton.addEventListener("click", function() { //add event listener for "Pass" button
+			var passObj = {};
+			var ownCardDisplayDiv = document.getElementById("ownDisplayArea");
+			passObj.card = ownCardDisplayDiv.getAttribute("cardname");
+			passObj.player = card.player;
+			socket.emit("pass", passObj); // Send event to server with card ID
+			socket.emit("next", 1);	// Also turn over next card
+		});
+		displayDiv.appendChild(passButton);
+	}
+}
+
+var socket = io(); //load socket.io-client and connect to the host that serves the page
+window.addEventListener("load", function(){ //when page loads
+  var nextButton = document.getElementById("next");
+  nextButton.addEventListener("click", function() { //add event listener for "Next" button
+    socket.emit("next", 1); // Send event to server with card ID (no data)
+  });
+  var showButton = document.getElementById("show");
+  showButton.addEventListener("click", function() { //add event listener for "Show" button
+	var ownCardDisplayDiv = document.getElementById("ownDisplayArea");
+	var cardID = ownCardDisplayDiv.getAttribute("cardname");
+    socket.emit("show", cardID); // Send event to server with card ID
+  });
+  var playerListBox = document.getElementById("playerListBox");
+  playerListBox.addEventListener("change", function() { //add event listener for when checkbox changes
+    socket.emit("playerChange", playerListBox.value); //send button status to server (as 1 or 0)
+  });
+});
+// Event handlers for socket
+// Event handler for when a new card is received from server
+socket.on('newCard', function (data) {
+  var solarSystemBody = JSON.parse(data);
+  var displayDiv = document.getElementById("ownDisplayArea");
+  display(displayDiv, solarSystemBody);
+});
+//Event handler for when a new opponent card is received from server
+socket.on('newOpponentCard', function (data) {
+  var solarSystemBody = JSON.parse(data);
+  var displayDiv = document.getElementById("opponentDisplayArea");
+  display(displayDiv, solarSystemBody);
+});
+// Event handler for when an opponent moves to their next card and the server wants us to clear the opponent card
+socket.on('clearOpponentCard', function (data) {
+  var solarSystemBody = JSON.parse(data);
+  var displayDiv = document.getElementById("opponentDisplayArea");
+  displayDiv.innerHTML = "";
+});
+// Event handler for when an opponent declares a stat for comparison
+socket.on('opponentDeclaration', function (data) {
+  var statItems = document.getElementsByName("stat:" + data);
+  for (i = 0; i < statItems.length; i++) {
+		statItems[i].setAttribute("class", "highlight");
+	}
+});
+</script>
+</body>
+</html>
